@@ -1,0 +1,9 @@
+{
+  // Node scripts (benchmarks): Node types, no DOM.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2023"],
+    "types": ["node"]
+  },
+  "include": ["scripts"]
+}
