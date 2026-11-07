@@ -10,6 +10,8 @@ export interface ByteOutcome {
   bitErrors: number;
   /** The received stop bit was 0. */
   framingError: boolean;
+  /** Received start-bit edge (sample index at the receiver). */
+  receivedSample?: number;
   /** Received start-bit edge minus the true edge, in samples. */
   timingError?: number;
   /** Lost while the receiver had no carrier (not yet detected, or ended early). */
@@ -78,6 +80,7 @@ export function analyzeLink(
         outcome.bitErrors = popcount8(outcome.sent ^ e.value);
         outcome.status = outcome.bitErrors === 0 ? 'ok' : 'bit-errors';
         outcome.framingError = e.framingError;
+        outcome.receivedSample = e.sample;
         outcome.timingError = error;
       } else {
         invented.push(e);
