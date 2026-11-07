@@ -27,8 +27,13 @@ Engineering student who has not yet taken digital communications.
 - **Ask for permission before installing any program on the system** (winget, global npm
   packages, SDKs...). Project-local dev dependencies in `package.json` are fine.
 - **Never tune on test data.** Thresholds and constants are tuned with the bench seeds
-  (`TUNING_SEEDS` in `src/core/analysis/seeds.ts`, range 1000–1999); unit and end-to-end
-  tests use only `TEST_SEEDS` (range 7000–7999). Never move a seed from one set to the other.
+  (`TUNING_SEEDS` in `src/core/analysis/seeds.ts`, range 1000–1999, used by
+  `npm run bench`); every test that judges the receiver over a random channel uses only
+  `TEST_SEEDS` (range 7000–7999). Never move a seed from one set to the other. If a test
+  fails, diagnose and fix with tuning seeds, then re-run the tests.
+- **BER accounting:** sequences are aligned before counting (edit distance, or ground-truth
+  timing in simulation); a lost byte counts as 8 bit errors, invented bytes are reported
+  separately. SNR is full-band (0–fs/2); Eb/N0 = SNR + 10·log10(fs / 2Rb).
 - **Languages:** code, comments, commit messages and README in English;
   `docs/TEORIA.md` in Spanish; UI in Spanish with an English option.
 - **License:** MIT.
