@@ -1,6 +1,6 @@
 import { utf8Encode } from '../../codec/utf8.ts';
-import { uartFrameBits } from '../../framing/uart.ts';
-import type { FskConfig } from './config.ts';
+import { uartBitsPerByte, uartFrameBits } from '../../framing/uart.ts';
+import { type FskConfig, samplesPerSymbol } from './config.ts';
 import type { FskEvent } from './demodulator.ts';
 import { FskModulator } from './modulator.ts';
 
@@ -19,19 +19,38 @@ export const TRANSMISSION_DEFAULTS: Readonly<TransmissionOptions> = {
   stopBits: 1,
 };
 
+function framingFor(config: FskConfig, options: Partial<TransmissionOptions>) {
+  const o = { ...TRANSMISSION_DEFAULTS, ...options };
+  return {
+    leadInSymbols: Math.ceil((o.leadInMs / 1000) * config.baudRate),
+    tailSymbols: Math.ceil((o.tailMs / 1000) * config.baudRate),
+    stopBits: o.stopBits,
+  };
+}
+
 /** Bytes → UART bits → FSK audio. */
 export function encodeBytes(
   bytes: Uint8Array,
   config: FskConfig,
   options: Partial<TransmissionOptions> = {},
 ): Float32Array {
-  const o = { ...TRANSMISSION_DEFAULTS, ...options };
-  const bits = uartFrameBits(bytes, {
-    leadInSymbols: Math.ceil((o.leadInMs / 1000) * config.baudRate),
-    tailSymbols: Math.ceil((o.tailMs / 1000) * config.baudRate),
-    stopBits: o.stopBits,
-  });
+  const bits = uartFrameBits(bytes, framingFor(config, options));
   return new FskModulator(config).modulate(bits);
+}
+
+/**
+ * Sample index, in the transmitted audio, of every byte's start-bit edge.
+ * Ground truth for analysing what the receiver did in simulation.
+ */
+export function byteEdges(
+  byteCount: number,
+  config: FskConfig,
+  options: Partial<TransmissionOptions> = {},
+): number[] {
+  const f = framingFor(config, options);
+  const symbol = samplesPerSymbol(config);
+  const perByte = uartBitsPerByte(f.stopBits);
+  return Array.from({ length: byteCount }, (_, i) => (f.leadInSymbols + i * perByte) * symbol);
 }
 
 /** Text → UTF-8 bytes → UART bits → FSK audio. */

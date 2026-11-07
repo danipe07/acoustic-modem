@@ -39,9 +39,22 @@ export interface ChannelResult {
   sampleRate: number;
   /** Mean power of the received signal over its own duration (without noise). */
   signalPower: number;
+  /** Variance σ² of the white noise added to every sample. */
   noisePower: number;
-  /** Full-band signal-to-noise ratio, dB (Infinity without noise). */
+  /**
+   * Signal-to-noise ratio in dB (Infinity without noise), measured over the
+   * FULL band of the receiver, 0 … rxSampleRate/2: signalPower / σ². The noise
+   * is white, so its one-sided power spectral density is N0 = 2σ² / rxSampleRate,
+   * and only a small part of it falls near the tones (see `ebN0Db`).
+   */
   snrDb: number;
+  /** Samples of silence inserted before the signal. */
+  delaySamples: number;
+  /**
+   * Time-axis scale caused by sample-rate and clock mismatch: transmitted
+   * sample n arrives at received sample delaySamples + n·timeScale.
+   */
+  timeScale: number;
 }
 
 /**
@@ -97,5 +110,7 @@ export function simulateChannel(
     signalPower,
     noisePower,
     snrDb: noisePower > 0 ? powerToDb(signalPower / noisePower) : Infinity,
+    delaySamples: lead,
+    timeScale: ratio,
   };
 }
