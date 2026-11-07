@@ -5,8 +5,13 @@ devices using nothing but a **speaker and a microphone**. Every piece of the sig
 processing chain — modulation, synchronisation, error detection and correction — is
 implemented from scratch in TypeScript.
 
-> **Status:** phase 1 (binary FSK) in progress. Live demo, screenshots and measurements
-> will be added as each phase is completed.
+**Live demo:** https://danipe07.github.io/acoustic-modem/ — a simulation mode works with a
+single device; the "over the air" mode links two devices (microphone access requires
+HTTPS).
+
+> **Status:** phase 1 (binary FSK) in progress. Screenshots and measurements will be added
+> as each phase is completed. Current simulation results:
+> [docs/results/phase1-ber.md](docs/results/phase1-ber.md).
 
 ## Roadmap
 
