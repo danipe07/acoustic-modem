@@ -5,3 +5,6 @@ coverage/
 .DS_Store
 .vscode/*
 !.vscode/extensions.json
+
+# Over-the-air test recordings (WAV) kept locally for analysis
+recordings/
