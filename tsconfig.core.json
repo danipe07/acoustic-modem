@@ -1,0 +1,12 @@
+{
+  // The DSP core must not depend on the browser: compiling it without the DOM
+  // library (and without any ambient @types) turns any use of `window`,
+  // `AudioContext`, `document`... into a compile error.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2023"],
+    "types": []
+  },
+  "include": ["src/core"],
+  "exclude": ["src/core/**/*.test.ts"]
+}
