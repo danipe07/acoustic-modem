@@ -4,6 +4,15 @@
   "private": true,
   "description": "Browser-based acoustic modem: send data between two devices using only a speaker and a microphone.",
   "license": "MIT",
+  "author": "Daniel Peña (https://github.com/danipe07)",
+  "homepage": "https://danipe07.github.io/acoustic-modem/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/danipe07/acoustic-modem.git"
+  },
+  "bugs": {
+    "url": "https://github.com/danipe07/acoustic-modem/issues"
+  },
   "type": "module",
   "engines": {
     "node": ">=24"
