@@ -1,33 +1,37 @@
-/**
- * Plays sample buffers through the speakers with the Web Audio API.
- *
- * Browsers (Safari on iOS in particular) only allow audio to start from a
- * user gesture, so `unlock()` must be called synchronously inside the click
- * handler; playback itself may happen later.
- */
-export class AudioPlayer {
-  private context: AudioContext | null = null;
-  private source: AudioBufferSourceNode | null = null;
+import { unlockAudio } from './context.ts';
 
-  /** Creates or resumes the AudioContext. Call from a user-gesture handler. */
-  unlock(): void {
-    this.context ??= new AudioContext();
-    if (this.context.state === 'suspended') void this.context.resume();
+/** Plays sample buffers through the speakers with the Web Audio API. */
+export class AudioPlayer {
+  private source: AudioBufferSourceNode | null = null;
+  private context: AudioContext | null = null;
+
+  /** Creates or resumes the shared AudioContext. Call from a user-gesture handler. */
+  unlock(): AudioContext {
+    this.context = unlockAudio();
+    return this.context;
   }
 
   /**
-   * Starts playing `samples`, normalised to a comfortable level (the simulated
-   * received signal may be 60 dB quieter than the transmitted one).
+   * Starts playing `samples`. With `normalize`, scales them to a comfortable
+   * level (a simulated received signal may be 60 dB quieter than the
+   * transmitted one); otherwise plays them exactly as given.
    * Returns the AudioContext time at which playback starts.
    */
-  play(samples: Float32Array, sampleRate: number, onEnded: () => void): number {
-    this.unlock();
-    const ctx = this.context as AudioContext;
+  play(
+    samples: Float32Array,
+    sampleRate: number,
+    onEnded: () => void,
+    { normalize = true } = {},
+  ): number {
+    const ctx = this.unlock();
     this.stop();
 
-    let peak = 0;
-    for (const v of samples) peak = Math.max(peak, Math.abs(v));
-    const gain = peak > 0 ? 0.5 / peak : 1;
+    let gain = 1;
+    if (normalize) {
+      let peak = 0;
+      for (const v of samples) peak = Math.max(peak, Math.abs(v));
+      gain = peak > 0 ? 0.5 / peak : 1;
+    }
 
     const buffer = ctx.createBuffer(1, samples.length, sampleRate);
     const channel = buffer.getChannelData(0);
