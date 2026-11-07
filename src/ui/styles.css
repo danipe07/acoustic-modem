@@ -384,3 +384,65 @@ footer {
 footer a {
   color: inherit;
 }
+
+h3 {
+  margin: 1rem 0 0.5rem;
+  font-size: 0.95rem;
+}
+
+.small {
+  font-size: 0.85rem;
+}
+
+.status {
+  font-weight: 600;
+  margin: 0.75rem 0 0.4rem;
+}
+
+.ok-text {
+  color: var(--ok);
+}
+
+.actions.wrap {
+  flex-wrap: wrap;
+  margin-top: 0.9rem;
+}
+
+.meter {
+  position: relative;
+  height: 0.7rem;
+  border-radius: 999px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.meter-fill {
+  height: 100%;
+  width: 0;
+  background: linear-gradient(90deg, var(--ok), #d29922 75%, var(--bad));
+  transition: width 0.08s linear;
+}
+
+.meter-peak {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  left: 0;
+  background: var(--text);
+}
+
+.levels {
+  margin: 0.35rem 0 0.75rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.mic-settings {
+  margin-top: 1rem;
+  font-size: 0.9rem;
+}
+
+.mic-settings .stats {
+  margin-top: 0.5rem;
+}

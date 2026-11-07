@@ -35,17 +35,24 @@ function incompleteTail(bytes: number[]): number {
   return 0;
 }
 
+/**
+ * Text for bytes that are still arriving: waits for the rest of a multi-byte
+ * character (e.g. an emoji) and makes control characters visible.
+ */
+export function decodeForDisplay(received: number[]): string {
+  const complete = received.slice(0, received.length - incompleteTail(received));
+  return visible(utf8Decode(Uint8Array.from(complete)));
+}
+
 /** Text received so far, while the signal is still playing. */
 export function renderLive(result: SimResponse, uptoSample: number): HTMLElement {
   const received = result.events
     .filter((e): e is ByteEvent => e.type === 'byte' && e.sample <= uptoSample)
     .map((e) => e.value);
-  // Wait for the rest of a multi-byte character (e.g. an emoji) before showing it.
-  const complete = received.slice(0, received.length - incompleteTail(received));
   return h(
     'div',
     { class: 'rx-text live' },
-    visible(utf8Decode(Uint8Array.from(complete))),
+    decodeForDisplay(received),
     h('span', { class: 'cursor' }, '▌'),
   );
 }

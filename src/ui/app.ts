@@ -18,6 +18,7 @@ import { h, setChildren } from './dom.ts';
 import { getLang, type Lang, num, onLangChange, setLang, t } from './i18n/index.ts';
 import { renderErrorTable, renderFinal, renderLegend, renderLive } from './receiver-panel.ts';
 import { renderStats } from './stats-panel.ts';
+import { createAirMode } from './air-mode.ts';
 
 const MAX_BYTES = 400;
 const BAUD_RATES = [50, 100, 200];
@@ -59,6 +60,10 @@ export function startApp(root: HTMLElement): void {
     revealSample: 0,
     error: null,
   };
+
+  // Created before the language listener below, so its own listener runs first.
+  const air = createAirMode(() => render());
+  let mode: 'sim' | 'air' = location.hash === '#air' ? 'air' : 'sim';
 
   // The default message follows the language until the user edits it.
   let textIsDefault = true;
@@ -164,17 +169,21 @@ export function startApp(root: HTMLElement): void {
   }
 
   function modeTabs(): HTMLElement {
-    return h(
-      'nav',
-      { class: 'tabs' },
-      h('button', { class: 'tab active', 'aria-current': 'page' }, t('mode.simulation')),
+    const tab = (value: 'sim' | 'air', label: string) =>
       h(
         'button',
-        { class: 'tab', disabled: true, title: t('mode.airSoon') },
-        t('mode.air'),
-        h('span', { class: 'badge' }, t('mode.airSoon')),
-      ),
-    );
+        {
+          class: mode === value ? 'tab active' : 'tab',
+          'aria-current': mode === value ? 'page' : undefined,
+          onclick: () => {
+            mode = value;
+            history.replaceState(null, '', value === 'air' ? '#air' : '#');
+            render();
+          },
+        },
+        label,
+      );
+    return h('nav', { class: 'tabs' }, tab('sim', t('mode.simulation')), tab('air', t('mode.air')));
   }
 
   function transmitterPanel(): HTMLElement {
@@ -440,15 +449,17 @@ export function startApp(root: HTMLElement): void {
       root,
       header(),
       modeTabs(),
-      h('p', { class: 'hint' }, t('mode.simulationHint')),
-      h(
-        'main',
-        { class: 'grid' },
-        transmitterPanel(),
-        channelPanel(),
-        receiverPanel(),
-        statsPanel(),
-      ),
+      h('p', { class: 'hint' }, mode === 'air' ? t('mode.airHint') : t('mode.simulationHint')),
+      mode === 'air'
+        ? h('main', { class: 'grid' }, ...air.render())
+        : h(
+            'main',
+            { class: 'grid' },
+            transmitterPanel(),
+            channelPanel(),
+            receiverPanel(),
+            statsPanel(),
+          ),
       footer(),
     );
   }
