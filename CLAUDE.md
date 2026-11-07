@@ -24,6 +24,11 @@ Engineering student who has not yet taken digital communications.
   correction ourselves. No acoustic-modem, DSP, FFT or FEC libraries.
 - **Ask for confirmation before every `git push`** (and before creating the GitHub repo or
   anything else that publishes). Local commits are fine.
+- **Ask for permission before installing any program on the system** (winget, global npm
+  packages, SDKs...). Project-local dev dependencies in `package.json` are fine.
+- **Never tune on test data.** Thresholds and constants are tuned with the bench seeds
+  (`TUNING_SEEDS` in `src/core/analysis/seeds.ts`, range 1000–1999); unit and end-to-end
+  tests use only `TEST_SEEDS` (range 7000–7999). Never move a seed from one set to the other.
 - **Languages:** code, comments, commit messages and README in English;
   `docs/TEORIA.md` in Spanish; UI in Spanish with an English option.
 - **License:** MIT.
@@ -39,6 +44,12 @@ Engineering student who has not yet taken digital communications.
 - Real-time reception uses an AudioWorklet (capture) feeding a Web Worker (receiver).
 - Audible band that phone speakers and mics handle well (phase 1 tones: 2000 / 3000 Hz).
 - Relative imports use explicit `.ts` extensions (Node runs the core with type stripping).
+
+## Owner
+
+Daniel Peña — GitHub user `danipe07`. Commits use
+`Daniel Peña <115595197+danipe07@users.noreply.github.com>` (configured in this repo).
+Pages URL: https://danipe07.github.io/acoustic-modem/
 
 ## Over-the-air test devices
 
