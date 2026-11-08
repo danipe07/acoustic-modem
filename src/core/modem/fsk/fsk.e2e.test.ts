@@ -164,6 +164,49 @@ describe('FSK end to end', () => {
         expect(r.text).toBe('Prueba 1: ¡Hola desde el módem acústico! 0123456789');
       });
     }
+
+    /** Gain of direct sound + one echo (linear amplitude g, delay τ) at a frequency. */
+    const combGain = (freq: number, g: number, delaySeconds: number) => {
+      const phase = 2 * Math.PI * freq * delaySeconds;
+      return Math.hypot(1 + g * Math.cos(phase), g * Math.sin(phase));
+    };
+
+    /** Echo level (dB) for which the comb leaves `weak` exactly `twistDb` below `strong`. */
+    function echoGainDbForTwist(strong: number, weak: number, delayMs: number, twistDb: number) {
+      const twist = (g: number) =>
+        20 * Math.log10(combGain(strong, g, delayMs / 1000) / combGain(weak, g, delayMs / 1000));
+      let low = 0;
+      let high = 0.999;
+      for (let i = 0; i < 60; i++) {
+        const g = (low + high) / 2;
+        if (twist(g) < twistDb) low = g;
+        else high = g;
+      }
+      return 20 * Math.log10(low);
+    }
+
+    const directions = [
+      ['tone 0 (2000 Hz) weak', 3000, 2000, 0.25],
+      ['tone 1 (3000 Hz) weak', 2000, 3000, 1 / 6],
+    ] as const;
+    const MESSAGE = '¡Hola, mundo! 👋';
+
+    describe.each(directions)('%s', (_name, strong, weak, delayMs) => {
+      describe.each([10, 15])('by %i dB', (twistDb) => {
+        it.each(TEST_SEEDS)('seed %i: one reception, no bit errors', (seed) => {
+          const gainDb = echoGainDbForTwist(strong, weak, delayMs, twistDb);
+          const r = transmit({
+            seed,
+            payload: MESSAGE,
+            channel: { echoes: [{ delayMs, gainDb }], noise: { snrDb: 10 } },
+          });
+          expect(r.events.filter((e) => e.type === 'carrier')).toHaveLength(1);
+          expect(r.text).toBe(MESSAGE);
+          expect(r.report.stats.ber).toBe(0);
+          expect(r.report.inventedBytes).toBe(0);
+        });
+      });
+    });
   });
 
   describe('one transmission, one reception', () => {
