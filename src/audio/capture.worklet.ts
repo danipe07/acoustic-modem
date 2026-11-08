@@ -35,7 +35,10 @@ class CaptureProcessor extends AudioWorkletProcessor {
   }
 
   process(inputs: Float32Array[][]): boolean {
-    const samples = inputs[0]?.[0]; // first input, first channel (mono)
+    // First input, channel 0 only. The node is created with channelCountMode
+    // "max" and "discrete" interpretation, so a stereo microphone arrives as
+    // two separate channels and is NOT averaged before reaching us.
+    const samples = inputs[0]?.[0];
     if (!samples || !this.target) return true;
     let offset = 0;
     while (offset < samples.length) {

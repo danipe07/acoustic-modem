@@ -72,8 +72,13 @@ export class AirReceiver {
     const capture = new AudioWorkletNode(ctx, 'capture-processor', {
       numberOfInputs: 1,
       numberOfOutputs: 1,
-      channelCount: 1,
-      channelCountMode: 'explicit',
+      // Deliver the microphone's channels untouched and let the worklet keep
+      // channel 0. With channelCount 1 + "explicit", Web Audio would average
+      // both channels of a stereo laptop mic: two capsules a few centimetres
+      // apart, averaged, form a direction-dependent comb filter that can notch
+      // one of the modem tones.
+      channelCountMode: 'max',
+      channelInterpretation: 'discrete',
     });
     // A private channel from the worklet straight to the worker.
     const channel = new MessageChannel();
