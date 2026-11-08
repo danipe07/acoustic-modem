@@ -20,7 +20,11 @@ const HISTORY = 5;
 type LevelMessage = Extract<RxMessage, { type: 'level' }>;
 
 interface Reception {
+  /** Listening session: sample numbers restart at 0 every time listening starts. */
+  session: number;
   startSample: number;
+  /** Closed because another carrier arrived first (should never happen). */
+  interrupted?: boolean;
   endSample?: number;
   bytes: number[];
   framingErrors: number;
@@ -52,6 +56,7 @@ export function createAirMode(requestRender: () => void): AirMode {
     level: null as LevelMessage | null,
     current: null as Reception | null,
     history: [] as Reception[],
+    session: 0,
   };
 
   // Elements updated in place (10 times per second) without re-rendering.
@@ -78,7 +83,17 @@ export function createAirMode(requestRender: () => void): AirMode {
     let structural = false;
     for (const e of message.events) {
       if (e.type === 'carrier') {
+        if (state.current) {
+          // Defensive: the receiver never starts a transmission inside another,
+          // but if it did, keep the open one instead of silently replacing it.
+          state.history = [{ ...state.current, interrupted: true }, ...state.history].slice(
+            0,
+            HISTORY,
+          );
+          structural = true;
+        }
         state.current = {
+          session: state.session,
           startSample: e.sample,
           bytes: [],
           framingErrors: 0,
@@ -155,6 +170,7 @@ export function createAirMode(requestRender: () => void): AirMode {
     state.error = null;
     requestRender();
     try {
+      state.session++;
       state.mic = await receiver.start(state.baudRate);
       state.listening = true;
     } catch (error) {
@@ -202,6 +218,8 @@ export function createAirMode(requestRender: () => void): AirMode {
       : null;
     const conf = r.confidences;
     return {
+      session: r.session,
+      interrupted: r.interrupted ?? false,
       startSample: r.startSample,
       endSample: r.endSample ?? null,
       durationSeconds:
