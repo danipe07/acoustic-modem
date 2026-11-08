@@ -44,6 +44,8 @@ export const en: Messages = {
   'air.micIgnored': '⚠ the browser left it on',
   'air.micOk': '✓ off',
   'air.micUnknown': 'not reported by the browser',
+  'air.channels': 'Channels',
+  'air.channelsValue': 'requested {requested} · applied {applied}',
   'air.device': 'Device',
   'air.sampleRate': 'Sample rate',
   'air.latency': 'Base latency',

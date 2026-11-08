@@ -1,5 +1,11 @@
 import { AirReceiver, MIC_CONSTRAINTS, type MicReport } from '../audio/air-receiver.ts';
 import { setAudioSessionType, unlockAudio } from '../audio/context.ts';
+import {
+  appliedChannelCount,
+  MIC_FLAGS,
+  type MicFlag,
+  micFlagStatus,
+} from '../audio/mic-status.ts';
 import { AudioPlayer } from '../audio/player.ts';
 import type { RxMessage } from '../audio/protocol.ts';
 import { utf8Encode } from '../core/codec/utf8.ts';
@@ -385,17 +391,24 @@ export function createAirMode(requestRender: () => void): AirMode {
   function micSettings(): HTMLElement | null {
     const mic = state.mic;
     if (!mic) return null;
-    const flag = (key: 'echoCancellation' | 'noiseSuppression' | 'autoGainControl') => {
-      const value = mic.applied[key];
-      if (value === undefined) return h('span', { class: 'muted' }, t('air.micUnknown'));
-      return value
+    const applied = mic.applied as Record<string, unknown>;
+    const flag = (key: MicFlag) => {
+      const status = micFlagStatus(applied, key);
+      if (status === 'unreported') return h('span', { class: 'muted' }, t('air.micUnknown'));
+      return status === 'on'
         ? h('span', { class: 'bad' }, t('air.micIgnored'))
         : h('span', { class: 'ok-text' }, t('air.micOk'));
     };
+    const channels = appliedChannelCount(applied);
     const rows: [string, Node | string][] = [
-      ['echoCancellation', flag('echoCancellation')],
-      ['noiseSuppression', flag('noiseSuppression')],
-      ['autoGainControl', flag('autoGainControl')],
+      ...MIC_FLAGS.map((key): [string, Node] => [key, flag(key)]),
+      [
+        t('air.channels'),
+        t('air.channelsValue', {
+          requested: MIC_CONSTRAINTS.channelCount,
+          applied: channels ?? t('air.micUnknown'),
+        }),
+      ],
       [t('air.sampleRate'), `${mic.applied.sampleRate ?? mic.contextSampleRate} Hz`],
       [t('air.latency'), `${num(mic.baseLatency * 1000, 1)} ms`],
       [t('air.device'), mic.label || '—'],
