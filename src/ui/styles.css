@@ -446,3 +446,16 @@ h3 {
 .mic-settings .stats {
   margin-top: 0.5rem;
 }
+
+.audio-warning {
+  margin: 1rem 0 0;
+  padding: 0.7rem 0.9rem;
+  border: 1px solid var(--bad);
+  border-radius: var(--radius);
+  background: var(--bad-bg);
+  color: var(--text);
+}
+
+.audio-warning button {
+  margin-left: 0.25rem;
+}

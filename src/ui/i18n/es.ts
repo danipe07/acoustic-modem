@@ -53,6 +53,11 @@ export const es = {
   'air.micError': 'No se pudo abrir el micrófono: {error}',
   'air.httpsNeeded': 'El micrófono solo funciona en HTTPS: usa la web publicada.',
 
+  'audio.paused': 'El audio está en pausa ({state}).',
+  'audio.pausedHelp':
+    'El sistema lo ha suspendido (en iOS, al bloquear la pantalla o cambiar de app): no se emite ni se recibe nada.',
+  'audio.resume': 'Reanudar el audio',
+
   'tx.title': 'Emisor',
   'tx.message': 'Mensaje',
   'tx.defaultMessage': '¡Hola, mundo! 👋',

@@ -55,6 +55,11 @@ export const en: Messages = {
   'air.micError': 'Could not open the microphone: {error}',
   'air.httpsNeeded': 'The microphone only works over HTTPS: use the published site.',
 
+  'audio.paused': 'Audio is paused ({state}).',
+  'audio.pausedHelp':
+    'The system suspended it (on iOS, when the screen locks or you switch apps): nothing is being sent or received.',
+  'audio.resume': 'Resume audio',
+
   'tx.title': 'Transmitter',
   'tx.message': 'Message',
   'tx.defaultMessage': 'Hello, world! 👋',

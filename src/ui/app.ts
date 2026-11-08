@@ -1,3 +1,4 @@
+import { audioState, onAudioStateChange, unlockAudio } from '../audio/context.ts';
 import { AudioPlayer } from '../audio/player.ts';
 import { ebN0Db } from '../core/analysis/theory.ts';
 import { utf8Encode } from '../core/codec/utf8.ts';
@@ -63,7 +64,16 @@ export function startApp(root: HTMLElement): void {
 
   // Created before the language listener below, so its own listener runs first.
   const air = createAirMode(() => render());
+  onAudioStateChange(() => render());
   let mode: 'sim' | 'air' = location.hash === '#air' ? 'air' : 'sim';
+  // The hash is a shareable link to a mode (…/acoustic-modem/#air).
+  window.addEventListener('hashchange', () => {
+    const next = location.hash === '#air' ? 'air' : 'sim';
+    if (next !== mode) {
+      mode = next;
+      render();
+    }
+  });
 
   // The default message follows the language until the user edits it.
   let textIsDefault = true;
@@ -443,11 +453,27 @@ export function startApp(root: HTMLElement): void {
     );
   }
 
+  /** Visible as long as the audio context exists but is not running (e.g. iOS screen lock). */
+  function audioWarning(): HTMLElement | null {
+    const audio = audioState();
+    if (audio === null || audio === 'running') return null;
+    return h(
+      'div',
+      { class: 'audio-warning', role: 'alert' },
+      h('strong', {}, t('audio.paused', { state: audio })),
+      ' ',
+      t('audio.pausedHelp'),
+      ' ',
+      h('button', { onclick: () => unlockAudio() }, t('audio.resume')),
+    );
+  }
+
   function render(): void {
     document.title = t('app.title');
     setChildren(
       root,
       header(),
+      audioWarning(),
       modeTabs(),
       h('p', { class: 'hint' }, mode === 'air' ? t('mode.airHint') : t('mode.simulationHint')),
       mode === 'air'

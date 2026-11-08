@@ -4,17 +4,37 @@
  * Browsers (Safari on iOS in particular) only let audio start from a user
  * gesture, so `unlockAudio()` must be called synchronously inside a click
  * handler, before any `await`.
+ *
+ * iOS also suspends ("suspended") or interrupts ("interrupted", Safari) the
+ * context when the screen locks, the app goes to the background or a call
+ * comes in; while that lasts nothing is played or captured. Listeners
+ * registered with `onAudioStateChange` hear about it.
  */
 let context: AudioContext | null = null;
+const stateListeners = new Set<() => void>();
 
 export function unlockAudio(): AudioContext {
-  context ??= new AudioContext();
-  if (context.state === 'suspended') void context.resume();
+  if (!context) {
+    context = new AudioContext();
+    context.addEventListener('statechange', () => {
+      for (const listener of stateListeners) listener();
+    });
+  }
+  if (context.state !== 'running') void context.resume();
   return context;
 }
 
 export function audioContext(): AudioContext | null {
   return context;
+}
+
+/** "running", "suspended", "interrupted" (Safari) or "closed"; null before the first unlock. */
+export function audioState(): string | null {
+  return context ? (context.state as string) : null;
+}
+
+export function onAudioStateChange(listener: () => void): void {
+  stateListeners.add(listener);
 }
 
 /**
