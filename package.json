@@ -23,6 +23,7 @@
     "preview": "vite preview",
     "typecheck": "tsc -p tsconfig.core.json && tsc -p tsconfig.json && tsc -p tsconfig.scripts.json",
     "bench": "node scripts/ber-bench.ts docs/results/phase1-ber.md",
+    "replay": "node scripts/replay.ts",
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
