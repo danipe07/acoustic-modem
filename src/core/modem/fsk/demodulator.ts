@@ -82,8 +82,6 @@ const LEVEL_DROP = 0.15;
 const START_BIT_MIN_LEVEL = 0.3;
 /** Fraction of quiet windows (over `endAfterSymbols`) that ends a transmission. */
 const END_QUIET_FRACTION = 0.75;
-/** During the echo guard, a new carrier must be at least this fraction (−3 dB) of the last one. */
-const ECHO_GUARD_LEVEL = 0.5;
 
 type State = 'search' | 'hunt' | 'byte';
 
@@ -138,8 +136,13 @@ export class FskDemodulator implements Demodulator<FskEvent> {
   private readonly quietHistory: Uint8Array;
   private quietIndex = 0;
   private quietCount = 0;
-  /** Level of the transmission that just ended (0 = no echo guard active). */
-  private echoGuardLevel = 0;
+  /**
+   * Echo guard: after a transmission ends, no new one may start until our
+   * tones have sunk into the noise. Otherwise its own reverberation, or the
+   * rest of a transmission whose end was declared too early, would open a
+   * second reception inside the first.
+   */
+  private waitingForSilence = false;
 
   constructor(config: FskConfig, options: Partial<FskDemodulatorOptions> = {}) {
     validateFskConfig(config);
@@ -175,7 +178,7 @@ export class FskDemodulator implements Demodulator<FskEvent> {
     this.markRun = 0;
     this.quietRun = 0;
     this.previousBalance = 0;
-    this.echoGuardLevel = 0;
+    this.waitingForSilence = false;
     this.resetTracking();
   }
 
@@ -234,14 +237,13 @@ export class FskDemodulator implements Demodulator<FskEvent> {
     const m = this.measure(this.cursor);
 
     if (this.state === 'search') {
-      if (this.echoGuardLevel > 0 && m.purity < o.detectOff) {
+      if (this.waitingForSilence && m.purity < o.detectOff) {
         // Our tones have sunk into the noise: the room has fallen silent.
         // (A level drop alone is not enough: a decaying reverb tail is still
         // a clean tone, just a quiet one.)
-        this.echoGuardLevel = 0;
+        this.waitingForSilence = false;
       }
-      const steadyMark =
-        m.purity > o.detectOn && m.balance > 0.5 && m.p1 >= ECHO_GUARD_LEVEL * this.echoGuardLevel;
+      const steadyMark = !this.waitingForSilence && m.purity > o.detectOn && m.balance > 0.5;
       if (steadyMark) {
         this.markRun++;
         this.leadInPowerSum += m.p1;
@@ -255,7 +257,6 @@ export class FskDemodulator implements Demodulator<FskEvent> {
         this.gain1 = this.leadInPowerSum / this.markRun;
         this.gain0 = this.gain1;
         this.gain0Measured = false;
-        this.echoGuardLevel = 0;
         this.state = 'hunt';
         this.clearQuietHistory();
         this.previousBalance = m.balance;
@@ -272,9 +273,8 @@ export class FskDemodulator implements Demodulator<FskEvent> {
     this.quietRun = quiet ? this.quietRun + 1 : 0;
     if (this.recordQuiet(quiet)) {
       events.push({ type: 'end', sample: Math.round(this.cursor) });
-      // Until the room falls silent, ignore anything much weaker than this
-      // transmission: it is its own reverberation, not a new transmitter.
-      this.echoGuardLevel = Math.max(this.gain0, this.gain1);
+      // No new transmission until the room falls silent (echo guard).
+      this.waitingForSilence = true;
       this.state = 'search';
       this.markRun = 0;
       this.resetTracking();
@@ -350,9 +350,19 @@ export class FskDemodulator implements Demodulator<FskEvent> {
     return this.quietCount >= END_QUIET_FRACTION * history.length;
   }
 
-  /** True if the tones are far below the level measured during this transmission. */
+  /**
+   * True if the window is far below the level each tone has in this
+   * transmission. Each tone is compared with its OWN level: speakers,
+   * microphones and table reflections often make one tone 10 dB quieter than
+   * the other ("twist"), and a run of the quiet tone is not the end of the
+   * signal.
+   */
   private isWeak(m: Measurement): boolean {
-    return m.p0 + m.p1 < LEVEL_DROP * Math.max(this.gain0, this.gain1);
+    const q1 = m.p1 / this.gain1;
+    // Until a start bit has revealed tone 0's level, a window dominated by
+    // tone 0 is never judged weak: it may just be the quieter tone.
+    if (!this.gain0Measured) return m.p1 >= m.p0 && q1 < LEVEL_DROP;
+    return Math.max(m.p0 / this.gain0, q1) < LEVEL_DROP;
   }
 
   private startByte(edge: number): void {
@@ -373,7 +383,10 @@ export class FskDemodulator implements Demodulator<FskEvent> {
     const bit = m.balance > 0 ? 1 : 0;
 
     if (this.bitIndex === 0) {
-      if (bit !== 0 || m.p0 < START_BIT_MIN_LEVEL * this.gain0) {
+      // The level check needs tone 0's level, which only start bits reveal:
+      // the first start bit is judged by its balance alone.
+      const tooWeak = this.gain0Measured && m.p0 < START_BIT_MIN_LEVEL * this.gain0;
+      if (bit !== 0 || tooWeak) {
         // False start (noise glitch, or a "0" far weaker than this
         // transmission's tone 0): resume hunting just after it.
         this.state = 'hunt';

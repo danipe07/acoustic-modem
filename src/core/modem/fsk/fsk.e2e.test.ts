@@ -145,6 +145,58 @@ describe('FSK end to end', () => {
     });
   });
 
+  describe('twist (one tone much quieter than the other)', () => {
+    // A reflection a few centimetres longer than the direct path (e.g. off the
+    // table) is a comb filter: a 0.25 ms echo notches 2000 Hz, a 1/6 ms echo
+    // notches 3000 Hz. With a −2 dB echo one tone arrives ~16 dB below the other.
+    const cases = [
+      ['tone 0 (2000 Hz) quieter', 0.25],
+      ['tone 1 (3000 Hz) quieter', 1 / 6],
+    ] as const;
+    for (const [name, delayMs] of cases) {
+      it.each(TEST_SEEDS)(`seed %i: ${name}: one reception, text intact`, (seed) => {
+        const r = transmit({
+          seed,
+          payload: 'Prueba 1: ¡Hola desde el módem acústico! 0123456789',
+          channel: { echoes: [{ delayMs, gainDb: -2 }], noise: { snrDb: 10 } },
+        });
+        expect(r.events.filter((e) => e.type === 'carrier')).toHaveLength(1);
+        expect(r.text).toBe('Prueba 1: ¡Hola desde el módem acústico! 0123456789');
+      });
+    }
+  });
+
+  describe('one transmission, one reception', () => {
+    it.each(TEST_SEEDS)(
+      'seed %i: a sudden level drop mid-message never opens a second reception before silence',
+      (seed) => {
+        // Regression: after an end declared inside a transmission, the rest of
+        // that same transmission used to be detected as a new one.
+        const cfg = fskConfig(48_000);
+        const a = encodeText('Prueba 1: ¡Hola desde el módem acústico! 0123456789', cfg);
+        const b = encodeText('second', cfg);
+        const gap = 24_000;
+        const audio = new Float32Array(gap + a.length + gap + b.length + gap);
+        audio.set(a, gap);
+        // From byte 12 on, the signal drops by 20 dB (someone covers the speaker).
+        const dropAt = gap + Math.round((0.3 + 12 * 0.2) * 48_000);
+        for (let i = dropAt; i < gap + a.length; i++) audio[i] *= 0.1;
+        audio.set(b, 2 * gap + a.length);
+        const rng = createRng(seed);
+        for (let i = 0; i < audio.length; i++) audio[i] += 0.002 * rng.gaussian();
+
+        const events = new FskDemodulator(cfg).push(audio);
+        const carriers = events.filter((e) => e.type === 'carrier');
+        const ends = events.filter((e) => e.type === 'end');
+        // Exactly the two real transmissions; the second only after the silent gap.
+        expect(carriers).toHaveLength(2);
+        expect(ends).toHaveLength(2);
+        expect(carriers[1].sample).toBeGreaterThan(gap + a.length);
+        expect(utf8Decode(collectBytes(events)).endsWith('second')).toBe(true);
+      },
+    );
+  });
+
   describe('room acoustics', () => {
     it.each(TEST_SEEDS)('seed %i: discrete echoes', (seed) => {
       const echoes = [
