@@ -15,7 +15,7 @@ export const en: Messages = {
   'mode.airHint':
     'Real transmission between two devices: one plays through its speaker, the other listens with its microphone. You can also try it with a single device: listen and transmit at the same time.',
 
-  'air.testMessage': 'Test 1: Hello from the acoustic modem! 0123456789',
+  'air.testMessage': 'Hello, world! 👋',
   'air.speedHint': 'Transmitter and receiver must use the same speed.',
   'air.txTitle': 'Transmit through the speaker',
   'air.txTip':

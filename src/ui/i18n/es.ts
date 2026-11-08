@@ -13,7 +13,7 @@ export const es = {
   'mode.airHint':
     'Transmite de verdad entre dos dispositivos: uno emite por el altavoz y el otro escucha por el micrófono. También puedes probar con un solo dispositivo: escucha y emite a la vez.',
 
-  'air.testMessage': 'Prueba 1: ¡Hola desde el módem acústico! 0123456789',
+  'air.testMessage': '¡Hola, mundo! 👋',
   'air.speedHint': 'Emisor y receptor deben usar la misma velocidad.',
   'air.txTitle': 'Emitir por el altavoz',
   'air.txTip':
