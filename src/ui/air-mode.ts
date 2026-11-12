@@ -1,5 +1,6 @@
 import { AirReceiver, MIC_CONSTRAINTS, type MicReport } from '../audio/air-receiver.ts';
 import { setAudioSessionType, unlockAudio } from '../audio/context.ts';
+import { snrFromLevels } from '../audio/level-tracker.ts';
 import {
   appliedChannelCount,
   MIC_FLAGS,
@@ -9,7 +10,6 @@ import {
 import { AudioPlayer } from '../audio/player.ts';
 import type { RxMessage } from '../audio/protocol.ts';
 import { utf8Encode } from '../core/codec/utf8.ts';
-import { dbToPower, powerToDb } from '../core/math/db.ts';
 import { fskConfig } from '../core/modem/fsk/config.ts';
 import { encodeText, TRANSMISSION_DEFAULTS } from '../core/modem/fsk/text-link.ts';
 import { compareBytes } from '../core/stats.ts';
@@ -29,9 +29,16 @@ interface Reception {
   /** Listening session: sample numbers restart at 0 every time listening starts. */
   session: number;
   startSample: number;
-  /** Closed because another carrier arrived first (should never happen). */
+  /** Wall-clock time of the carrier (ISO 8601): names the recording file. */
+  receivedAt: string;
+  /** Closed without an end: listening stopped, or another carrier arrived first. */
   interrupted?: boolean;
   endSample?: number;
+  /** Levels measured by the receiver worker, dBFS (NaN if unknown). */
+  signalDb: number;
+  noiseDb: number;
+  /** This reception's own audio; arrives shortly after it ends. */
+  recording?: { bytes: Uint8Array; seconds: number; firstSample: number };
   bytes: number[];
   framingErrors: number;
   confidences: number[];
@@ -71,6 +78,10 @@ export function createAirMode(requestRender: () => void): AirMode {
   let levelText: HTMLElement | null = null;
   let statusText: HTMLElement | null = null;
   let liveText: HTMLElement | null = null;
+  let snrValue: HTMLElement | null = null;
+  let snrDetail: HTMLElement | null = null;
+  let confidenceValue: HTMLElement | null = null;
+  let confidenceDetail: HTMLElement | null = null;
 
   onLangChange(() => {
     if (state.textIsDefault) state.text = t('air.testMessage');
@@ -83,6 +94,20 @@ export function createAirMode(requestRender: () => void): AirMode {
     if (message.type === 'level') {
       state.level = message;
       updateLevel();
+      return;
+    }
+    if (message.type === 'recording') {
+      const owner = [state.current, ...state.history].find(
+        (r) => r?.session === message.session && r.startSample === message.carrierSample,
+      );
+      if (owner) {
+        owner.recording = {
+          bytes: message.bytes,
+          seconds: message.seconds,
+          firstSample: message.firstSample,
+        };
+        requestRender();
+      }
       return;
     }
     if (message.type !== 'events') return;
@@ -101,6 +126,9 @@ export function createAirMode(requestRender: () => void): AirMode {
         state.current = {
           session: state.session,
           startSample: e.sample,
+          receivedAt: new Date().toISOString(),
+          signalDb: NaN,
+          noiseDb: NaN,
           bytes: [],
           framingErrors: 0,
           confidences: [],
@@ -113,20 +141,24 @@ export function createAirMode(requestRender: () => void): AirMode {
         if (e.framingError) state.current.framingErrors++;
       } else if (e.type === 'end' && state.current) {
         state.current.endSample = e.sample;
+        // Final levels of this reception, before it stops being the current one.
+        state.current.signalDb = message.signalDb;
+        state.current.noiseDb = message.noiseDb;
         state.history = [state.current, ...state.history].slice(0, HISTORY);
         state.current = null;
         structural = true;
       }
     }
+    if (state.current) {
+      state.current.signalDb = message.signalDb;
+      state.current.noiseDb = message.noiseDb;
+    }
     if (structural) requestRender();
     else updateLive();
   }
 
-  function snrEstimate(level: LevelMessage): number {
-    // Signal level includes the noise underneath it: S = (S+N) − N.
-    const s = dbToPower(level.signalDb) - dbToPower(level.noiseDb);
-    return s > 0 ? powerToDb(s) - level.noiseDb : -Infinity;
-  }
+  const dbText = (db: number, digits = 0) => (Number.isFinite(db) ? num(db, digits) : '—');
+  const mean = (values: number[]) => values.reduce((a, b) => a + b, 0) / values.length;
 
   function updateLevel(): void {
     const level = state.level;
@@ -135,12 +167,41 @@ export function createAirMode(requestRender: () => void): AirMode {
     if (meterFill) meterFill.style.width = pct(level.rmsDb);
     if (meterPeak) meterPeak.style.left = pct(level.peakDb);
     if (levelText) {
-      const snr = snrEstimate(level);
       levelText.textContent = t('air.levels', {
-        peak: num(level.peakDb, 0),
-        noise: num(level.noiseDb, 0),
-        signal: Number.isNaN(level.signalDb) ? '—' : num(level.signalDb, 0),
-        snr: Number.isFinite(snr) ? num(snr, 0) : '—',
+        peak: dbText(level.peakDb),
+        noise: dbText(level.noiseDb),
+      });
+    }
+    // Ten times per second while receiving; between receptions the SNR shown
+    // is the one of the last reception.
+    if (state.current) {
+      state.current.signalDb = level.signalDb;
+      state.current.noiseDb = level.noiseDb;
+      updateMetrics();
+    }
+  }
+
+  /** Live SNR and confidence of the reception in progress (or of the last one). */
+  function updateMetrics(): void {
+    const shown = state.current ?? state.history[0];
+    const signalDb = shown?.signalDb ?? NaN;
+    const noiseDb = shown?.noiseDb ?? NaN;
+    const snr = snrFromLevels(signalDb, noiseDb);
+    if (snrValue) snrValue.textContent = Number.isFinite(snr) ? `${num(snr, 0)} dB` : '—';
+    if (snrDetail) {
+      snrDetail.textContent = t('air.snrDetail', {
+        signal: dbText(signalDb),
+        noise: dbText(noiseDb),
+      });
+    }
+    const conf = shown?.confidences ?? [];
+    if (confidenceValue) {
+      confidenceValue.textContent = conf.length ? num(mean(conf), 2) : '—';
+    }
+    if (confidenceDetail) {
+      confidenceDetail.textContent = t('air.confidenceDetail', {
+        last: conf.length ? num(conf[conf.length - 1], 2) : '—',
+        min: conf.length ? num(Math.min(...conf), 2) : '—',
       });
     }
   }
@@ -161,12 +222,20 @@ export function createAirMode(requestRender: () => void): AirMode {
         state.current && h('span', { class: 'cursor' }, '▌'),
       );
     }
+    updateMetrics();
   }
 
   async function toggleListening(): Promise<void> {
     if (state.listening) {
+      // The worker answers with the recording of the unfinished reception.
       receiver.stop();
       state.listening = false;
+      if (state.current) {
+        state.history = [{ ...state.current, interrupted: true }, ...state.history].slice(
+          0,
+          HISTORY,
+        );
+      }
       state.current = null;
       requestRender();
       return;
@@ -177,7 +246,7 @@ export function createAirMode(requestRender: () => void): AirMode {
     requestRender();
     try {
       state.session++;
-      state.mic = await receiver.start(state.baudRate);
+      state.mic = await receiver.start(state.baudRate, state.session);
       state.listening = true;
     } catch (error) {
       state.error = window.isSecureContext
@@ -223,9 +292,24 @@ export function createAirMode(requestRender: () => void): AirMode {
       ? compareBytes(utf8Encode(state.expected), Uint8Array.from(r.bytes))
       : null;
     const conf = r.confidences;
+    const snr = snrFromLevels(r.signalDb, r.noiseDb);
+    // JSON has no NaN: unknown levels are reported as null.
+    const known = (value: number) => (Number.isFinite(value) ? value : null);
     return {
       session: r.session,
+      receivedAt: r.receivedAt,
       interrupted: r.interrupted ?? false,
+      // The file name the recording gets when downloaded, to pair WAV and JSON.
+      recording: r.recording
+        ? {
+            file: recordingFileName(r),
+            seconds: r.recording.seconds,
+            firstSample: r.recording.firstSample,
+          }
+        : null,
+      signalDb: known(r.signalDb),
+      noiseDb: known(r.noiseDb),
+      snrDb: known(snr),
       startSample: r.startSample,
       endSample: r.endSample ?? null,
       durationSeconds:
@@ -233,7 +317,7 @@ export function createAirMode(requestRender: () => void): AirMode {
       baudRate: r.baudRate,
       bytesReceived: r.bytes.length,
       framingErrors: r.framingErrors,
-      meanConfidence: conf.length ? conf.reduce((a, b) => a + b, 0) / conf.length : null,
+      meanConfidence: conf.length ? mean(conf) : null,
       minConfidence: conf.length ? Math.min(...conf) : null,
       text: decodeForDisplay(r.bytes),
       hex: r.bytes
@@ -271,18 +355,25 @@ export function createAirMode(requestRender: () => void): AirMode {
     requestRender();
   }
 
-  async function downloadWav(): Promise<void> {
-    const { bytes } = await receiver.exportWav();
+  const fileStamp = (isoDate: string) => isoDate.replace(/[:.]/g, '-');
+
+  /** Named after the moment the carrier arrived, not the moment of the download. */
+  const recordingFileName = (r: Reception) => `acoustic-modem-rx-${fileStamp(r.receivedAt)}.wav`;
+
+  function saveWav(bytes: Uint8Array, name: string): void {
     const blob = new Blob([bytes.buffer as ArrayBuffer], { type: 'audio/wav' });
     const url = URL.createObjectURL(blob);
-    const link = h('a', {
-      href: url,
-      download: `acoustic-modem-${new Date().toISOString().replace(/[:.]/g, '-')}.wav`,
-    });
+    const link = h('a', { href: url, download: name });
     document.body.append(link);
     link.click();
     link.remove();
     setTimeout(() => URL.revokeObjectURL(url), 10_000);
+  }
+
+  /** The last minute of audio, whatever it contains (e.g. no carrier was detected). */
+  async function downloadWav(): Promise<void> {
+    const { bytes } = await receiver.exportWav();
+    saveWav(bytes, `acoustic-modem-last-minute-${fileStamp(new Date().toISOString())}.wav`);
   }
 
   // ---------------------------------------------------------------- views
@@ -371,6 +462,8 @@ export function createAirMode(requestRender: () => void): AirMode {
           : `${num(s.meanConfidence, 2)} / ${num(s.minConfidence ?? 0, 2)}`,
       ],
       [t('air.duration'), s.durationSeconds === null ? '—' : `${num(s.durationSeconds, 2)} s`],
+      [t('air.snrEstimate'), s.snrDb === null ? '—' : `${num(s.snrDb, 1)} dB`],
+      [t('air.signalNoise'), `${dbText(r.signalDb, 1)} / ${dbText(r.noiseDb, 1)} dBFS`],
     ];
     if (s.vsExpected) {
       const v = s.vsExpected;
@@ -385,6 +478,61 @@ export function createAirMode(requestRender: () => void): AirMode {
       'dl',
       { class: 'stats' },
       ...rows.flatMap(([k, v]) => [h('dt', {}, k), h('dd', {}, v)]),
+    );
+  }
+
+  /** Every reception kept in memory, newest first, each with its own recording. */
+  function receptionList(): HTMLElement | null {
+    if (state.history.length === 0) return null;
+    const item = (r: Reception) => {
+      const s = receptionSummary(r);
+      const parts = [
+        new Date(r.receivedAt).toLocaleTimeString(),
+        t('air.rxBytes', { bytes: s.bytesReceived }),
+        s.snrDb !== null && `SNR ≈ ${num(s.snrDb, 0)} dB`,
+        s.meanConfidence !== null &&
+          t('air.rxConfidence', {
+            mean: num(s.meanConfidence, 2),
+            min: num(s.minConfidence ?? 0, 2),
+          }),
+        s.vsExpected && `BER ${s.vsExpected.ber === 0 ? '0' : num(s.vsExpected.ber, 4)}`,
+        r.interrupted && t('air.rxInterrupted'),
+      ];
+      const recording = r.recording;
+      return h(
+        'li',
+        { class: 'rx-item' },
+        h('p', { class: 'rx-item-head' }, parts.filter(Boolean).join(' · ')),
+        h('p', { class: 'rx-item-text' }, decodeForDisplay(r.bytes) || '—'),
+        h(
+          'button',
+          {
+            class: 'small',
+            disabled: !recording,
+            onclick: () => recording && saveWav(recording.bytes, recordingFileName(r)),
+          },
+          recording
+            ? t('air.downloadRx', { seconds: num(recording.seconds, 1) })
+            : t('air.recordingPending'),
+        ),
+      );
+    };
+    return h(
+      'div',
+      { class: 'rx-history' },
+      h('h3', {}, t('air.history')),
+      h('p', { class: 'muted small' }, t('air.historyHelp', { count: HISTORY })),
+      h('ol', { class: 'rx-list' }, ...state.history.map(item)),
+    );
+  }
+
+  function metric(label: string, value: HTMLElement, detail: HTMLElement): HTMLElement {
+    return h(
+      'div',
+      { class: 'metric' },
+      h('span', { class: 'metric-label' }, label),
+      value,
+      detail,
     );
   }
 
@@ -427,6 +575,10 @@ export function createAirMode(requestRender: () => void): AirMode {
     levelText = h('p', { class: 'muted small levels' });
     statusText = h('p', { class: 'status' }, statusLabel());
     liveText = h('div', { class: 'rx-text' });
+    snrValue = h('span', { class: 'metric-value' });
+    snrDetail = h('span', { class: 'metric-detail' });
+    confidenceValue = h('span', { class: 'metric-value' });
+    confidenceDetail = h('span', { class: 'metric-detail' });
 
     const expected = h('input', { type: 'text', 'aria-label': t('air.expected') });
     expected.value = state.expected;
@@ -464,6 +616,13 @@ export function createAirMode(requestRender: () => void): AirMode {
           meterPeak,
         ),
       state.listening && levelText,
+      (state.listening || state.history.length > 0) &&
+        h(
+          'div',
+          { class: 'metrics', 'aria-live': 'off' },
+          metric(t('air.snrLive'), snrValue, snrDetail),
+          metric(t('air.confidenceLive'), confidenceValue, confidenceDetail),
+        ),
       liveText,
       h(
         'label',
@@ -473,6 +632,7 @@ export function createAirMode(requestRender: () => void): AirMode {
       ),
       last && h('h3', {}, t('air.lastRx')),
       last && receptionStats(last),
+      receptionList(),
       micSettings(),
       h(
         'div',
