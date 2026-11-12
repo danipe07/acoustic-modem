@@ -56,9 +56,10 @@ export class AirReceiver {
 
   /**
    * Opens the microphone and starts demodulating. Call `unlockAudio()` in the
-   * click handler before awaiting this.
+   * click handler before awaiting this. `session` comes back with every
+   * reception recording, to tell listening sessions apart.
    */
-  async start(baudRate: number): Promise<MicReport> {
+  async start(baudRate: number, session: number): Promise<MicReport> {
     const ctx = unlockAudio();
     if (!navigator.mediaDevices?.getUserMedia) {
       throw new Error('getUserMedia unavailable (the microphone needs HTTPS or localhost)');
@@ -85,6 +86,7 @@ export class AirReceiver {
     capture.port.postMessage({ port: channel.port1 }, [channel.port1]);
     const command: RxCommand = {
       type: 'start',
+      session,
       sampleRate: ctx.sampleRate,
       baudRate,
       port: channel.port2,
